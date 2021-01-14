@@ -73,10 +73,10 @@ Note: you may get a popup window titled "Dynamics content" in your V-REP window.
 
 ## Training
 
-To train a regular VPG policy from scratch in simulation, first start the simulation environment by running V-REP (navigate to your V-REP directory and run `./vrep.sh`). From the main menu, select `File` > `Open scene...`, and open the file `visual-pushing-grasping/simulation/simulation.ttt`. Then navigate to this repository in another terminal window and run the following
+To train a regular VPG policy from scratch in simulation, first start the simulation environment by running V-REP (navigate to your V-REP directory and run `./vrep.sh`). From the main menu, select `File` > `Open scene...`, and open the file `visual-pushing-grasping/simulation/simulation.ttt`. Then navigate to this repository in another terminal window and run the following:
 
-    ```shell
+   
     python main.py --is_sim --push_rewards --experience_replay --explore_rate_decay
-    ```
+    
 
 
