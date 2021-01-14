@@ -1,4 +1,4 @@
-# continuous angle for learning synergies between pushing and grasping with Soft Actor Critic (SAC) algorithm 
+# Continuous angle for learning synergies between pushing and grasping with Soft Actor Critic (SAC) algorithm 
 
 Visual Pushing and Grasping (VPG) is a method for training robotic agents to learn how to plan complementary pushing and grasping actions for manipulation (*e.g.* for unstructured pick-and-place applications). VPG operates directly on visual observations (RGB-D images), learns from trial and error, trains quickly, and generalizes to new objects and scenarios.
 
