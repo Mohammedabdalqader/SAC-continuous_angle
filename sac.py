@@ -18,12 +18,6 @@ class Actor(nn.Module):
 
     def __init__(self,log_std_min=-2, log_std_max=2):
         """Initialize parameters and build model.
-        Params
-            state_size (int): Dimension of each state
-            action_size (int): Dimension of each action
-            seed (int): Random seed
-            fc1_units (int): Number of nodes in first hidden layer
-            fc2_units (int): Number of nodes in second hidden layer
         """
         super(Actor, self).__init__()
 
@@ -89,13 +83,6 @@ class Critic(nn.Module):
 
     def __init__(self):
         """Initialize parameters and build model.
-        Params
-        ======
-            state_size (int): Dimension of each state
-            action_size (int): Dimension of each action
-            seed (int): Random seed
-            fc1_units (int): Number of nodes in first hidden layer
-            fc2_units (int): Number of nodes in second hidden layer
         """
         super(Critic, self).__init__()
 
@@ -114,14 +101,9 @@ class Critic(nn.Module):
         ]))
 
 
-
-    
-
     def forward(self, states,actions):
         """Build a critic (value) network that maps (state, action) pairs -> Q-values."""
         x  = torch.cat((states, actions.float()), dim=1)
-
-
         x = self.critic(x)
         return x
 

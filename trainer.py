@@ -1,45 +1,31 @@
 import os
 import time
+import random
+import copy
 import numpy as np
 import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple, deque
 from torch.autograd import Variable
 from utils import CrossEntropyLoss2d
 from models import  reinforcement_net
 from scipy import ndimage
 import matplotlib.pyplot as plt
-from AngleNet import AngleNet
-from replay_buffer import ReplayBuffer
 from sac import Actor,Critic
 
-import random
-import copy
-from collections import namedtuple, deque
 
 
-BUFFER_SIZE = int(5e3)   # replay buffer size
 
 gamma = 0.5               # discount factor
-TAU = 0.01               # for soft update of target parameters
-LR = 1e-3                 # learning rate 
+TAU = 0.01                # for soft update of target parameters
 LR_ACTOR = 1e-4
-LR_CRITIC = 1e-4
-
-WEIGHT_DECAY = 2e-5      # L2 weight decay
-
-
+LR_CRITIC = 3e-4
+WEIGHT_DECAY = 2e-5       # L2 weight decay
 seed = 2020
-BUFFER_SIZE = int(2e3)
-BATCH_SIZE = 2          # minibatch size
-
-HIDDEN_SIZE = 256
-    
 device = "cuda"
-state_size = 20 * 20
 action_size = 1
 action_high = 1.0
 action_low = -1.0
@@ -49,23 +35,11 @@ class Trainer(object):
                  is_testing, load_snapshot, snapshot_folder, force_cpu):
         self.explore_prob = 0.5
         self.method = method
-        self.BATCH_SIZE = 5
         self.TAU = TAU
-        self.epsilon= 1.0
-        self.epsilon_min = 0.15
-        self.epsilon_decay = 0.9995 
         self.is_testing = is_testing
-        self.num_success_grasp = 0
-        self.num_success_push = 0
-        self.grasp_loss = 0
-        self.total_grasp_loss = 0
         self.push_update = 0
         self.grasp_update = 0
-        ## d4pg parameters
-        self.v_min = -5
-        self.v_max = 5
-        self.num_atoms = 51
-        self.delta_z = (self.v_max - self.v_min) / (self.num_atoms - 1)
+
 
         ## SAC parameters
         self.target_entropy = -action_size  # -dim(A)
@@ -97,13 +71,8 @@ class Trainer(object):
 
         # Fully convolutional Q network for deep reinforcement learning
         if self.method == 'reinforcement': 
-            self.action_size = 1   # angle
-            self.push_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, self.BATCH_SIZE, seed = 7)
-            self.grasp_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, self.BATCH_SIZE, seed = 7)
+            self.action_size = action_size  
 
-            # Prioritized experience replay       
-            #self.push_memory = PrioritizedReplay(capacity=BUFFER_SIZE)
-            #self.grasp_memory = PrioritizedReplay(capacity=BUFFER_SIZE)
 
 
             self.model = reinforcement_net(self.use_cuda)
@@ -158,31 +127,22 @@ class Trainer(object):
       
         if load_snapshot:
       
-            '''
-            pretrained_dict = torch.load(os.path.join(snapshot_folder,"snapshot-005700.reinforcement.pth"))
-            model_dict = self.model.state_dict()
 
-            pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
 
-            model_dict.update(pretrained_dict) 
-            self.model.load_state_dict(model_dict)
-            '''
-
-            self.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-027000.reinforcement.pth")))
+            self.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.reinforcement.pth")))
 
             
-
             
             # load actor-critic models (PUSH)
-            self.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-027000.push_actor.pth")))
-            self.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-027000.push_critic1_target.pth")))
-            self.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-027000.push_critic2_target.pth")))
+            self.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_actor.pth")))
+            self.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic1_target.pth")))
+            self.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic2_target.pth")))
 
             
             # load actor-critic models (GRASP)
-            self.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-027000.grasp_actor.pth")))
-            self.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-027000.grasp_critic1_target.pth")))
-            self.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-027000.grasp_critic2_target.pth")))
+            self.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_actor.pth")))
+            self.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic1_target.pth")))
+            self.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic2_target.pth")))
             
             
          
@@ -197,7 +157,7 @@ class Trainer(object):
         self.model.train()
 
         # Initialize optimizer
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-4,momentum=0.9,weight_decay=2e-5)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=LR_CRITIC,momentum=0.9,weight_decay=WEIGHT_DECAY)
         self.iteration = 0
 
  
@@ -216,67 +176,7 @@ class Trainer(object):
         self.push_alpha_log = []
         self.q_functions_log = []
 
-    def padding(self,state):
 
-
-
-        diag_length = float(state.shape[-1]) * np.sqrt(2)
-        diag_length = np.ceil(diag_length/4)*4
-        padding_width = int((diag_length - state.shape[-1])/2)
-        state =  np.pad(state[0][0][:][:], padding_width, 'constant', constant_values=0)
-        state = torch.from_numpy(state).unsqueeze(0).unsqueeze(0)
-        return state
-
-
-    def data_augmentation(self,state,rotation):
-
-
-        rotate_theta = np.radians(rotation)
-
-        # Compute sample grid for rotation BEFORE neural network
-        affine_mat = np.asarray([[np.cos(-rotate_theta), np.sin(-rotate_theta), 0],[-np.sin(-rotate_theta), np.cos(-rotate_theta), 0]])
-        affine_mat.shape = (2,3,1)
-        affine_mat = torch.from_numpy(affine_mat).permute(2,0,1).float()
-        flow_grid = F.affine_grid(affine_mat, state.size())
-
-
-        # Rotate images clockwise
-
-        state = F.grid_sample(state, flow_grid, mode='nearest')
-
-
-        return state.squeeze(0)
-    
-
-    def ROI(self,radius, rowNumber, columnNumber,a):
-
-        r_start = rowNumber-radius
-        c_start = columnNumber-radius
-
-        r_end = rowNumber+radius+1
-        c_end = columnNumber+radius+1
-
-
-
-        if r_start < 0:
-            r_end   = r_end - r_start 
-            r_start = 0
-        if c_start < 0:
-            c_end   = c_end - c_start 
-            c_start = 0
-
-        if r_end > len(a[1]) : 
-            r_start = r_start - (r_end - len(a[1]))
-            r_end   = len(a[1])
-        if c_end > len(a[1]):
-
-            c_start = c_start - (c_end - len(a[1]))
-            c_end   = len(a[1])
-
-
-
-            
-        return [[a[i][j][:] for j in range(c_start, c_end)] for i in range(r_start, r_end)]
 
 
 
@@ -298,9 +198,6 @@ class Trainer(object):
         self.iteration = self.executed_action_log.shape[0] - 2
         self.executed_action_log = self.executed_action_log[0:self.iteration,:]
         self.executed_action_log = self.executed_action_log.tolist()
-
-
-
         self.label_value_log = np.loadtxt(os.path.join(transitions_directory, 'label-value.log.txt'), delimiter=' ')
         self.label_value_log = self.label_value_log[0:self.iteration]
         self.label_value_log.shape = (self.iteration,1)
@@ -309,15 +206,10 @@ class Trainer(object):
         self.predicted_value_log = self.predicted_value_log[0:self.iteration]
         self.predicted_value_log.shape = (self.iteration,1)
         self.predicted_value_log = self.predicted_value_log.tolist()
-
-
-
-
         self.reward_value_log = np.loadtxt(os.path.join(transitions_directory, 'reward-value.log.txt'), delimiter=' ')
         self.reward_value_log = self.reward_value_log[0:self.iteration]
         self.reward_value_log.shape = (self.iteration,1)
         self.reward_value_log = self.reward_value_log.tolist()
-
         self.use_heuristic_log = np.loadtxt(os.path.join(transitions_directory, 'use-heuristic.log.txt'), delimiter=' ')
         self.use_heuristic_log = self.use_heuristic_log[0:self.iteration]
         self.use_heuristic_log.shape = (self.iteration,1)
@@ -428,15 +320,11 @@ class Trainer(object):
                         push_angles = np.concatenate((push_angles, output_prob[rotate_idx][3]), axis=0)
                         grasp_angles = np.concatenate((grasp_angles, output_prob[rotate_idx][8]), axis=0)
 
-
-
-
-
-        print("Check 1 push_predictions_Q1 ", push_predictions_Q1.shape)
-        print("Check 2 push_angles" , push_angles.shape)
               
 
         return push_predictions_Q1, push_predictions_Q2 , push_angles_full,push_angles, log_pis_next_push, grasp_predictions_Q1,grasp_predictions_Q2, grasp_angles_full, grasp_angles,log_pis_next_grasp
+
+
 
 
     def get_label_value(self, primitive_action, push_success, grasp_success, change_detected, next_color_heightmap, next_depth_heightmap):
@@ -499,7 +387,7 @@ class Trainer(object):
     # Compute labels and backpropagate
     def backprop(self, color_heightmap, depth_heightmap, primitive_action, best_pix_ind, label_value,push_angles,grasp_angles,critic_type):
 
-        print("Check 4 best_pix_ind", best_pix_ind)
+
         if self.method == 'reinforcement':
 
             # Compute labels

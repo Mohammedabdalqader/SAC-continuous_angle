@@ -92,8 +92,6 @@ def main(args):
                           'push_success' : False,
                           'grasp_success' : False,
                           'angle':None,
-                          'Q_Network_to_update':1,
-                          'faild_grasp':0,
                           'critic_type':0}
 
 
@@ -121,12 +119,10 @@ def main(args):
                 nonlocal_variables['primitive_action'] = 'grasp'
                 explore_actions = False
                 if not grasp_only:
-                    if is_testing and method == 'reactive':
-                        if best_push_conf > 2*best_grasp_conf:
-                                nonlocal_variables['primitive_action'] = 'push'
-                    else:
-                        if best_push_conf > best_grasp_conf:
-                            nonlocal_variables['primitive_action'] = 'push'
+                   
+                    if best_push_conf > best_grasp_conf:
+                        nonlocal_variables['primitive_action'] = 'push'
+
                     explore_actions = np.random.uniform() < explore_prob
                     if explore_actions: # Exploitation (do best action) vs exploration (do other action)
                         print('Strategy: explore (exploration probability: %f)' % (explore_prob))
@@ -247,8 +243,6 @@ def main(args):
     # Start main training/testing loop
     scores_deque = deque(maxlen=100)
     score = []
-    grasp_successful_rate = 0
-    total_grasp_attempts = 0
     is_restarted = False
     while True:
         print('\n%s iteration: %d' % ('Testing' if is_testing else 'Training', trainer.iteration))
@@ -299,18 +293,18 @@ def main(args):
 
                 if is_testing: # If at end of test run, re-load original weights (before test run)
 
-                    trainer.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-040250.reinforcement.pth")))
+                    trainer.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.reinforcement.pth")))
             
                     # load actor-critic models (PUSH)
-                    trainer.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-040250.push_actor.pth")))
-                    trainer.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-040250.push_critic1_target.pth")))
-                    trainer.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-040250.push_critic2_target.pth")))
+                    trainer.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_actor.pth")))
+                    trainer.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic1_target.pth")))
+                    trainer.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic2_target.pth")))
 
             
                     # load actor-critic models (GRASP)
-                    trainer.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-040250.grasp_actor.pth")))
-                    trainer.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-040250.grasp_critic1_target.pth")))
-                    trainer.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-040250.grasp_critic2_target.pth")))
+                    trainer.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_actor.pth")))
+                    trainer.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic1_target.pth")))
+                    trainer.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic2_target.pth")))
             else:
                 # print('Not enough stuff on the table (value: %d)! Pausing for 30 seconds.' % (np.sum(stuff_count)))
                 # time.sleep(30)
@@ -331,9 +325,9 @@ def main(args):
 
 
             prev_push_angles = push_angles.copy()
-            print("Check 3 prev_push_angles", prev_push_angles.shape)
             prev_grasp_angles = grasp_angles.copy()
             logger.save_actions(trainer.iteration, np.stack((prev_push_angles,prev_grasp_angles)))
+
             # Execute best primitive action on robot in another thread
             nonlocal_variables['executing_action'] = True
 
@@ -346,7 +340,6 @@ def main(args):
             if not is_restarted:
                 # Detect changes
 
-            
 
                 depth_diff = abs(depth_heightmap - prev_depth_heightmap)
                 depth_diff[np.isnan(depth_diff)] = 0
@@ -358,17 +351,12 @@ def main(args):
                 change_detected = change_value > change_threshold or prev_grasp_success
                 print('Change detected: %r (value: %d)' % (change_detected, change_value))
 
-            if change_detected:
+            if change_detected or is_restarted:
                 if prev_primitive_action == 'push':
                     no_change_count[0] = 0
                 elif prev_primitive_action == 'grasp':
                     no_change_count[1] = 0
-            elif is_restarted:
 
-                if prev_primitive_action == 'push':
-                    no_change_count[0] = 0
-                elif prev_primitive_action == 'grasp':
-                    no_change_count[1] = 0
             else:
                 if prev_primitive_action == 'push':
                     no_change_count[0] += 1
@@ -415,16 +403,16 @@ def main(args):
                 if sample_ind.size > 0:
 
                     # Find sample with highest surprise value
-                    if method == 'reactive':
-                        sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - (1 - sample_reward_value))
-                    elif method == 'reinforcement':
+
+                    if method == 'reinforcement':
                         sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - np.asarray(trainer.label_value_log)[sample_ind[:,0]])
+
                     sorted_surprise_ind = np.argsort(sample_surprise_values[:,0])
                     sorted_sample_ind = sample_ind[sorted_surprise_ind,0]
                     pow_law_exp = 2
                     rand_sample_ind = int(np.round(np.random.power(pow_law_exp, 1)*(sample_ind.size-1)))
                     sample_iteration = sorted_sample_ind[rand_sample_ind]
-                    print("Check 5 sample_iteration", sample_iteration)
+
                     print('Experience replay: iteration %d (surprise value: %f)' % (sample_iteration, sample_surprise_values[sorted_surprise_ind[rand_sample_ind]]))
 
                     # Load sample RGB-D heightmap
@@ -443,7 +431,7 @@ def main(args):
                     next_sample_depth_heightmap = cv2.imread(os.path.join(logger.depth_heightmaps_directory, '%06d.0.depth.png' % (sample_iteration+1)), -1)
                     next_sample_depth_heightmap = next_sample_depth_heightmap.astype(np.float32)/100000
                     actions = np.load(os.path.join(logger.action_directory, '%s.action.npy' % (sample_iteration)))
-                    print("Check 6 actions", actions.shape)
+
 
                     sample_push_success = sample_reward_value == 0.5
                     sample_grasp_success = sample_reward_value == 1
@@ -453,7 +441,7 @@ def main(args):
                     # Get labels for sample and backpropagate
                     sample_best_pix_ind = (np.asarray(trainer.executed_action_log)[sample_iteration,1:4]).astype(int)
                     q_functions = (np.asarray(trainer.q_functions_log)[sample_iteration]).astype(int)
-                    print("Check 7 q_functions", q_functions)
+
 
                     sample_push_angles  = actions[0]
                     sample_grasp_angles  = actions[1]
