@@ -25,7 +25,8 @@ Extending previous algorithm to allow continuous angle
 #### Demo in Simulation (pushing and grasping with continuous angle) - Test Environment
 
 This demo runs our pre-trained model with a UR5 robot arm in simulation on challenging picking scenarios with adversarial clutter, where grasping an object is generally not feasible without first pushing to break up tight clusters of objects. 
-<img src="images/continuous_angle.gif" height=200px align="right" />
+
+<img src="images/continuous_angle.gif" height=358px width=600px align="center" />
 
 
 ## Installation
