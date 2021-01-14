@@ -60,20 +60,20 @@ Accelerating training/inference with an NVIDIA GPU requires installing [CUDA](ht
     cd SAC-continuous_angle
     ```
 
-1. Run V-REP (navigate to your V-REP/CoppeliaSim directory and run `./vrep.sh` or `./coppeliaSim.sh`). From the main menu, select `File` > `Open scene...`, and open the file `SAC-continuous_angle/simulation/simulation.ttt` from this repository.
+2. Run V-REP (navigate to your V-REP/CoppeliaSim directory and run `./vrep.sh` or `./coppeliaSim.sh`). From the main menu, select `File` > `Open scene...`, and open the file `SAC-continuous_angle/simulation/simulation.ttt` from this repository.
 
-1. In another terminal window, run the following (simulation will start in the V-REP window). 
+3. In another terminal window, run the following (simulation will start in the V-REP window). 
 
     ```shell
     python main.py --is_sim --obj_mesh_dir 'objects/blocks' --num_obj 10     --push_rewards --experience_replay --explore_rate_decay 
-    --is_testing --test_preset_cases --test_preset_file    'simulation/  test-cases/test-10-obj-07.txt'     --load_snapshot --snapshot_folder 'model'     --save_visualizations
+    --is_testing --test_preset_cases --test_preset_file    'simulation/  test-cases/test-10-obj-07.txt'     --load_snapshot --snapshot_folder 'model'
     ```
 
 Note: you may get a popup window titled "Dynamics content" in your V-REP window. Select the checkbox and press OK. You will have to do this a total of 3 times before it stops annoying you.
 
 ## Training
 
-To train a regular VPG policy from scratch in simulation, first start the simulation environment by running V-REP (navigate to your V-REP directory and run `./vrep.sh`). From the main menu, select `File` > `Open scene...`, and open the file `visual-pushing-grasping/simulation/simulation.ttt`. Then navigate to this repository in another terminal window and run the following:
+To train a regular VPG policy from scratch in simulation, first start the simulation environment by running V-REP (navigate to your V-REP directory and run `./vrep.sh`). From the main menu, select `File` > `Open scene...`, and open the file `visual-pushing-grasping/simulation/simulation.ttt`. Then navigate to this repository in another terminal window and run the following
 
     ```shell
     python main.py --is_sim --push_rewards --experience_replay --explore_rate_decay
