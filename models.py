@@ -111,7 +111,7 @@ is_volatile=False,use_target_model=False, specific_rotation=-1):
 
                     if use_target_model:
                         # Get predicted next-state actions and Q values from target models
-                        push_angles, log_pis_next_push = push_actor.evaluate(push_interm_feat.detach())
+                        push_angles, log_pis_next_push,_ = push_actor.evaluate(push_interm_feat.detach())
 
                         
 
@@ -122,7 +122,7 @@ is_volatile=False,use_target_model=False, specific_rotation=-1):
                         # grasping Target Network
 
                         # Get predicted next-state actions and Q values from target models
-                        grasp_angles, log_pis_next_grasp = grasp_actor.evaluate(grasp_interm_feat.detach())
+                        grasp_angles, log_pis_next_grasp,_ = grasp_actor.evaluate(grasp_interm_feat.detach())
 
 
                         Q_1_grasp = grasp_critic1_target(grasp_interm_feat, grasp_angles.cuda())

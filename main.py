@@ -96,11 +96,6 @@ def main(args):
 
 
 
-
-
-
-
-
     # Parallel thread to process network output and execute actions
     # -------------------------------------------------------------
     def process_actions():
@@ -133,7 +128,7 @@ def main(args):
                 logger.write_to_log('is-exploit', trainer.is_exploit_log)
 
                 use_heuristic = False
-
+                nonlocal_variables['primitive_action'] = 'grasp'
                 # Push action (Find bext pixel location then find the predicted angle on this index)
                 if nonlocal_variables['primitive_action'] == 'push':
                     push_Q1_max = np.max(push_predictions_Q1)
@@ -290,6 +285,12 @@ def main(args):
 
                 robot.restart_sim()
                 robot.add_objects()
+
+                trainer.grasp_alpha_log.append([trainer.grasp_log_alpha])
+                logger.write_to_log('grasp_alpha', trainer.grasp_alpha_log)
+
+                trainer.push_alpha_log.append([trainer.push_log_alpha])
+                logger.write_to_log('push_alpha', trainer.push_alpha_log)
 
                 if is_testing: # If at end of test run, re-load original weights (before test run)
 
@@ -546,7 +547,7 @@ if __name__ == '__main__':
 
     # -------------- Testing options --------------
     parser.add_argument('--is_testing', dest='is_testing', action='store_true', default=False)
-    parser.add_argument('--max_test_trials', dest='max_test_trials', type=int, action='store', default=30,                help='maximum number of test runs per case/scenario')
+    parser.add_argument('--max_test_trials', dest='max_test_trials', type=int, action='store', default=90,                help='maximum number of test runs per case/scenario')
     parser.add_argument('--test_preset_cases', dest='test_preset_cases', action='store_true', default=False)
     parser.add_argument('--test_preset_file', dest='test_preset_file', action='store', default='test-10-obj-01.txt')
 

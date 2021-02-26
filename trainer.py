@@ -48,10 +48,8 @@ class Trainer(object):
         '''
         self.push_log_alpha = torch.tensor([0.0], requires_grad=True)
         self.push_alpha_optimizer = optim.SGD(params=[self.push_log_alpha], lr=LR_ACTOR) 
-
         self.grasp_log_alpha = torch.tensor([0.0], requires_grad=True)
         self.grasp_alpha_optimizer = optim.SGD(params=[self.grasp_log_alpha], lr=LR_ACTOR) 
-
         self._action_prior = "uniform"
         '''
 
@@ -546,9 +544,3 @@ class Trainer(object):
                 
             print('loss_value: %f' % (loss_value))
             print('actor_loss_value: ', (actor_loss_value))
-
-
-
-
-
-

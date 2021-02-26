@@ -31,10 +31,10 @@ class Actor(nn.Module):
         self.actornet = nn.Sequential(OrderedDict([
             ('actor-norm0', nn.BatchNorm2d(1024)),
             ('actor-relu0', nn.ReLU(inplace=True)),
-            ('actor-conv0', nn.Conv2d(1024, 64, kernel_size=3, stride=1,padding=1, bias=False)),
-            ('actor-norm1', nn.BatchNorm2d(64)),
+            ('actor-conv0', nn.Conv2d(1024, 128, kernel_size=3, stride=1,padding=1, bias=False)),
+            ('actor-norm1', nn.BatchNorm2d(128)),
             ('actor-relu1', nn.ReLU(inplace=True)),
-            ('actor-conv1', nn.Conv2d(64, 64, kernel_size=1, stride=1,bias=False)),
+            ('actor-conv1', nn.Conv2d(128, 64, kernel_size=1, stride=1,bias=False)),
             ('actor-norm2', nn.BatchNorm2d(64)),
             ('actor-relu2', nn.ReLU(inplace=True))
 
@@ -59,7 +59,7 @@ class Actor(nn.Module):
         e = dist.sample().cuda()
         action = torch.tanh(mu + e * std)
         log_prob = Normal(mu, std).log_prob(mu + e * std) - torch.log(1 - action.pow(2) + epsilon)
-        return action, log_prob
+        return action, log_prob , mu
         
     
     def get_angle(self, state):
@@ -90,10 +90,10 @@ class Critic(nn.Module):
         self.critic = nn.Sequential(OrderedDict([
             ('critic-norm0', nn.BatchNorm2d(1025)),
             ('critic-relu0', nn.ReLU(inplace=True)),
-            ('critic-conv0', nn.Conv2d(1025, 64, kernel_size=1, stride=1, bias=False)),
-            ('critic-norm1', nn.BatchNorm2d(64)),
+            ('critic-conv0', nn.Conv2d(1025, 128, kernel_size=1, stride=1, bias=False)),
+            ('critic-norm1', nn.BatchNorm2d(128)),
             ('critic-relu1', nn.ReLU(inplace=True)),
-            ('critic-conv1', nn.Conv2d(64, 64 , kernel_size=1, stride=1,bias=False)),
+            ('critic-conv1', nn.Conv2d(128, 64 , kernel_size=1, stride=1,bias=False)),
             ('critic-norm2', nn.BatchNorm2d(64)),
             ('critic-relu2', nn.ReLU(inplace=True)),
             ('critic-conv2', nn.Conv2d(64, 1, kernel_size=1, stride=1, bias=False))
