@@ -18,6 +18,7 @@ from logger import Logger
 import utils
 import torch.nn.functional as F
 
+
 def main(args):
 
 
@@ -285,13 +286,13 @@ def main(args):
 
                 robot.restart_sim()
                 robot.add_objects()
-
+                '''
                 trainer.grasp_alpha_log.append([trainer.grasp_log_alpha])
                 logger.write_to_log('grasp_alpha', trainer.grasp_alpha_log)
 
                 trainer.push_alpha_log.append([trainer.push_log_alpha])
                 logger.write_to_log('push_alpha', trainer.push_alpha_log)
-
+                '''
                 if is_testing: # If at end of test run, re-load original weights (before test run)
 
                     trainer.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.reinforcement.pth")))
@@ -366,8 +367,8 @@ def main(args):
 
             # Compute training labels
             label_value, prev_reward_value = trainer.get_label_value(prev_primitive_action, prev_push_success, prev_grasp_success, change_detected, color_heightmap, valid_depth_heightmap)
-
-           
+            trainer.accumulated_rewards.append(prev_reward_value)
+            trainer.writer.add_scalar("accumulated_rewards/train", np.mean(trainer.accumulated_rewards), trainer.iteration)
 
 
             trainer.label_value_log.append([label_value])

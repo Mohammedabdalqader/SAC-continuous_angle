@@ -15,6 +15,9 @@ from models import  reinforcement_net
 from scipy import ndimage
 import matplotlib.pyplot as plt
 from sac import Actor,Critic
+from torch.utils.tensorboard import SummaryWriter
+ 
+
 
 
 
@@ -157,6 +160,9 @@ class Trainer(object):
         # Initialize optimizer
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=LR_CRITIC,momentum=0.9,weight_decay=WEIGHT_DECAY)
         self.iteration = 0
+        self.accumulated_rewards = deque(maxlen=100)
+        self.writer = SummaryWriter('runs/SAC')
+
 
  
         # Initialize lists to save execution info and RL variables
@@ -443,7 +449,7 @@ class Trainer(object):
 
                 # Compute alpha loss
 
-                angles_pred, log_pis = self.push_actor.evaluate(self.model.output_prob[0][10].detach().cuda())
+                angles_pred, log_pis,_ = self.push_actor.evaluate(self.model.output_prob[0][10].detach().cuda())
 
 
                 push_actor_loss = 0
@@ -508,7 +514,7 @@ class Trainer(object):
 
                 # Compute alpha loss
 
-                angles_pred, log_pis = self.grasp_actor.evaluate(self.model.output_prob[0][11].detach().cuda())
+                angles_pred, log_pis,_ = self.grasp_actor.evaluate(self.model.output_prob[0][11].detach().cuda())
 
 
                 grasp_actor_loss = 0
@@ -543,4 +549,6 @@ class Trainer(object):
                 
                 
             print('loss_value: %f' % (loss_value))
-            print('actor_loss_value: ', (actor_loss_value))
+            print('actor_loss_value: ', (torch.from_numpy(actor_loss_value[0])))
+            self.writer.add_scalar("critic-loss/train", loss_value, self.iteration)
+            self.writer.add_scalar("actor-loss/train", torch.from_numpy(actor_loss_value[0]), self.iteration)
