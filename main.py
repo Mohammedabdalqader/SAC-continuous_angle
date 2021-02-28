@@ -129,7 +129,6 @@ def main(args):
                 logger.write_to_log('is-exploit', trainer.is_exploit_log)
 
                 use_heuristic = False
-                nonlocal_variables['primitive_action'] = 'grasp'
                 # Push action (Find bext pixel location then find the predicted angle on this index)
                 if nonlocal_variables['primitive_action'] == 'push':
                     push_Q1_max = np.max(push_predictions_Q1)
