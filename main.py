@@ -18,7 +18,6 @@ from logger import Logger
 import utils
 import torch.nn.functional as F
 
-
 def main(args):
 
 
@@ -92,8 +91,18 @@ def main(args):
                           'best_pix_ind' : None,
                           'push_success' : False,
                           'grasp_success' : False,
-                          'angle':None,
+                          'angle_yaw':None,
+                          'angle_pitch':None,
+                          'gripper_open_width':None,
+                          'push_length':None,
+                          'Q_Network_to_update':1,
+                          'faild_grasp':0,
                           'critic_type':0}
+
+
+
+
+
 
 
 
@@ -115,10 +124,15 @@ def main(args):
                 nonlocal_variables['primitive_action'] = 'grasp'
                 explore_actions = False
                 if not grasp_only:
-                   
-                    if best_push_conf > best_grasp_conf:
-                        nonlocal_variables['primitive_action'] = 'push'
+                    if is_testing and method == 'reactive':
+                        if best_push_conf > 2*best_grasp_conf:
+                                nonlocal_variables['primitive_action'] = 'push'
+                    
+                    else:
 
+                        if best_push_conf > best_grasp_conf:
+                            nonlocal_variables['primitive_action'] = 'push'
+                    
                     explore_actions = np.random.uniform() < explore_prob
                     if explore_actions: # Exploitation (do best action) vs exploration (do other action)
                         print('Strategy: explore (exploration probability: %f)' % (explore_prob))
@@ -129,26 +143,35 @@ def main(args):
                 logger.write_to_log('is-exploit', trainer.is_exploit_log)
 
                 use_heuristic = False
+
                 # Push action (Find bext pixel location then find the predicted angle on this index)
                 if nonlocal_variables['primitive_action'] == 'push':
                     push_Q1_max = np.max(push_predictions_Q1)
                     push_Q2_max = np.max(push_predictions_Q2)
                     best_push_conf = max(push_Q1_max,push_Q2_max)
-
+                    
    
                     if push_Q1_max > push_Q2_max:
                         nonlocal_variables['best_pix_ind'] = np.unravel_index(np.argmax(push_predictions_Q1), push_predictions_Q1.shape)
-                        nonlocal_variables['angle'] = torch.tensor(push_angles_full[nonlocal_variables['best_pix_ind']])
                         critic_type = 0
 
                         print("push_critic 1")
                     elif push_Q2_max > push_Q1_max:
                         nonlocal_variables['best_pix_ind'] = np.unravel_index(np.argmax(push_predictions_Q2), push_predictions_Q2.shape)
-                        nonlocal_variables['angle'] = torch.tensor(push_angles_full[nonlocal_variables['best_pix_ind']])
                         critic_type = 1
                         print("push_critic 2")
 
-                    
+
+                    nonlocal_variables['angle_yaw'] = torch.tensor(push_angles_full[:,0,:,:].squeeze()[nonlocal_variables['best_pix_ind']])
+                    nonlocal_variables['angle_pitch'] = torch.tensor(push_angles_full[:,1,:,:].squeeze()[nonlocal_variables['best_pix_ind']])
+                    nonlocal_variables['push_length'] = 0.05 * torch.tensor(push_angles_full[:,2,:,:].squeeze()[nonlocal_variables['best_pix_ind']]) + 0.05
+
+                    print("angle yaw .......",nonlocal_variables['angle_yaw'])
+                    print("angle pitch .......",nonlocal_variables['angle_pitch'])
+                    print("check yaw .......",push_angles_full[nonlocal_variables['best_pix_ind'][0],0,nonlocal_variables['best_pix_ind'][1],nonlocal_variables['best_pix_ind'][2]])
+                    print("check pitch .......",push_angles_full[nonlocal_variables['best_pix_ind'][0],1,nonlocal_variables['best_pix_ind'][1],nonlocal_variables['best_pix_ind'][2]])
+
+                
                     predicted_value = best_push_conf
 
                 elif nonlocal_variables['primitive_action'] == 'grasp':
@@ -158,22 +181,29 @@ def main(args):
 
                     if grasp_Q1_max > grasp_Q2_max:
                         nonlocal_variables['best_pix_ind'] = np.unravel_index(np.argmax(grasp_predictions_Q1), grasp_predictions_Q1.shape)
-                        nonlocal_variables['angle'] = torch.tensor(grasp_angles_full[nonlocal_variables['best_pix_ind']])
+
                         critic_type = 0
                         print("grasp_critic 1")
                     elif grasp_Q2_max > grasp_Q1_max:
                         nonlocal_variables['best_pix_ind'] = np.unravel_index(np.argmax(grasp_predictions_Q2), grasp_predictions_Q2.shape)
-                        nonlocal_variables['angle'] = torch.tensor(grasp_angles_full[nonlocal_variables['best_pix_ind']])
                         critic_type = 1
                         print("grasp_critic 2")
 
+                    nonlocal_variables['angle_yaw'] = torch.tensor(grasp_angles_full[:,0,:,:].squeeze()[nonlocal_variables['best_pix_ind']])
+                    nonlocal_variables['angle_pitch'] = torch.tensor(grasp_angles_full[:,1,:,:].squeeze()[nonlocal_variables['best_pix_ind']])
+                    nonlocal_variables['gripper_open_width'] = 0.005*torch.tensor(grasp_angles_full[:,2,:,:].squeeze()[nonlocal_variables['best_pix_ind']]) + 0.005
+
+                    print("angle yaw .......",nonlocal_variables['angle_yaw'])
+                    print("angle pitch .......",nonlocal_variables['angle_pitch'])
+                    print("check yaw .......",grasp_angles_full[nonlocal_variables['best_pix_ind'][0],0,nonlocal_variables['best_pix_ind'][1],nonlocal_variables['best_pix_ind'][2]])
+                    print("check pitch .......",grasp_angles_full[nonlocal_variables['best_pix_ind'][0],1,nonlocal_variables['best_pix_ind'][1],nonlocal_variables['best_pix_ind'][2]])
 
                     predicted_value = best_grasp_conf
 
                 nonlocal_variables['critic_type'] = critic_type
 
                 print("best_pixel .......",nonlocal_variables['best_pix_ind'])
-                print("angle .......",nonlocal_variables['angle'])
+
 
                 trainer.use_heuristic_log.append([1 if use_heuristic else 0])
                 logger.write_to_log('use-heuristic', trainer.use_heuristic_log)
@@ -186,7 +216,9 @@ def main(args):
 
                 # Compute 3D position of pixel
                 print('Action: %s at (%d, %d, %d)' % (nonlocal_variables['primitive_action'], nonlocal_variables['best_pix_ind'][0], nonlocal_variables['best_pix_ind'][1], nonlocal_variables['best_pix_ind'][2]))
-                best_rotation_angle = np.deg2rad(nonlocal_variables['best_pix_ind'][0]*(360.0/trainer.model.num_rotations) + (45 + nonlocal_variables['angle'] * 45))
+                best_rotation_angle_yaw = np.deg2rad(nonlocal_variables['best_pix_ind'][0]*(360.0/trainer.model.num_rotations) + (45 + nonlocal_variables['angle_yaw'] * 45))
+                best_rotation_angle_pitch = np.deg2rad(15 + nonlocal_variables['angle_pitch'] * 15)
+                best_rotation_angle = [best_rotation_angle_yaw,best_rotation_angle_pitch]
                 best_pix_x = nonlocal_variables['best_pix_ind'][2]
                 best_pix_y = nonlocal_variables['best_pix_ind'][1]
                 primitive_position = [best_pix_x * heightmap_resolution + workspace_limits[0][0], best_pix_y * heightmap_resolution + workspace_limits[1][0], valid_depth_heightmap[best_pix_y][best_pix_x] + workspace_limits[2][0]]
@@ -219,10 +251,10 @@ def main(args):
 
                 # Execute primitive
                 if nonlocal_variables['primitive_action'] == 'push':
-                    nonlocal_variables['push_success'] = robot.push(primitive_position, best_rotation_angle, workspace_limits)
+                    nonlocal_variables['push_success'] = robot.push(primitive_position, best_rotation_angle,nonlocal_variables['push_length'],workspace_limits)
                     print('Push successful: %r' % (nonlocal_variables['push_success']))
                 elif nonlocal_variables['primitive_action'] == 'grasp':
-                    nonlocal_variables['grasp_success'] = robot.grasp(primitive_position, best_rotation_angle, workspace_limits)
+                    nonlocal_variables['grasp_success'] = robot.grasp(primitive_position, best_rotation_angle,nonlocal_variables['gripper_open_width'], workspace_limits)
                     print('Grasp successful: %r' % (nonlocal_variables['grasp_success']))
 
                 nonlocal_variables['executing_action'] = False
@@ -238,6 +270,8 @@ def main(args):
     # Start main training/testing loop
     scores_deque = deque(maxlen=100)
     score = []
+    grasp_successful_rate = 0
+    total_grasp_attempts = 0
     is_restarted = False
     while True:
         print('\n%s iteration: %d' % ('Testing' if is_testing else 'Training', trainer.iteration))
@@ -285,27 +319,21 @@ def main(args):
 
                 robot.restart_sim()
                 robot.add_objects()
-                '''
-                trainer.grasp_alpha_log.append([trainer.grasp_log_alpha])
-                logger.write_to_log('grasp_alpha', trainer.grasp_alpha_log)
 
-                trainer.push_alpha_log.append([trainer.push_log_alpha])
-                logger.write_to_log('push_alpha', trainer.push_alpha_log)
-                '''
                 if is_testing: # If at end of test run, re-load original weights (before test run)
 
-                    trainer.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.reinforcement.pth")))
+                    trainer.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.reinforcement.pth")))
             
                     # load actor-critic models (PUSH)
-                    trainer.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_actor.pth")))
-                    trainer.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic1_target.pth")))
-                    trainer.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic2_target.pth")))
+                    trainer.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.push_actor.pth")))
+                    trainer.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.push_critic1_target.pth")))
+                    trainer.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.push_critic2_target.pth")))
 
             
                     # load actor-critic models (GRASP)
-                    trainer.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_actor.pth")))
-                    trainer.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic1_target.pth")))
-                    trainer.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic2_target.pth")))
+                    trainer.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.grasp_actor.pth")))
+                    trainer.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.grasp_critic1_target.pth")))
+                    trainer.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.grasp_critic2_target.pth")))
             else:
                 # print('Not enough stuff on the table (value: %d)! Pausing for 30 seconds.' % (np.sum(stuff_count)))
                 # time.sleep(30)
@@ -326,9 +354,9 @@ def main(args):
 
 
             prev_push_angles = push_angles.copy()
+            print("Check 3 prev_push_angles", prev_push_angles.shape)
             prev_grasp_angles = grasp_angles.copy()
             logger.save_actions(trainer.iteration, np.stack((prev_push_angles,prev_grasp_angles)))
-
             # Execute best primitive action on robot in another thread
             nonlocal_variables['executing_action'] = True
 
@@ -341,6 +369,7 @@ def main(args):
             if not is_restarted:
                 # Detect changes
 
+            
 
                 depth_diff = abs(depth_heightmap - prev_depth_heightmap)
                 depth_diff[np.isnan(depth_diff)] = 0
@@ -352,12 +381,17 @@ def main(args):
                 change_detected = change_value > change_threshold or prev_grasp_success
                 print('Change detected: %r (value: %d)' % (change_detected, change_value))
 
-            if change_detected or is_restarted:
+            if change_detected:
                 if prev_primitive_action == 'push':
                     no_change_count[0] = 0
                 elif prev_primitive_action == 'grasp':
                     no_change_count[1] = 0
+            elif is_restarted:
 
+                if prev_primitive_action == 'push':
+                    no_change_count[0] = 0
+                elif prev_primitive_action == 'grasp':
+                    no_change_count[1] = 0
             else:
                 if prev_primitive_action == 'push':
                     no_change_count[0] += 1
@@ -366,9 +400,10 @@ def main(args):
 
             # Compute training labels
             label_value, prev_reward_value = trainer.get_label_value(prev_primitive_action, prev_push_success, prev_grasp_success, change_detected, color_heightmap, valid_depth_heightmap)
+
+           
             trainer.accumulated_rewards.append(prev_reward_value)
             trainer.writer.add_scalar("accumulated_rewards/train", np.mean(trainer.accumulated_rewards), trainer.iteration)
-
 
             trainer.label_value_log.append([label_value])
             logger.write_to_log('label-value', trainer.label_value_log)
@@ -404,16 +439,16 @@ def main(args):
                 if sample_ind.size > 0:
 
                     # Find sample with highest surprise value
-
-                    if method == 'reinforcement':
+                    if method == 'reactive':
+                        sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - (1 - sample_reward_value))
+                    elif method == 'reinforcement':
                         sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - np.asarray(trainer.label_value_log)[sample_ind[:,0]])
-
                     sorted_surprise_ind = np.argsort(sample_surprise_values[:,0])
                     sorted_sample_ind = sample_ind[sorted_surprise_ind,0]
                     pow_law_exp = 2
                     rand_sample_ind = int(np.round(np.random.power(pow_law_exp, 1)*(sample_ind.size-1)))
                     sample_iteration = sorted_sample_ind[rand_sample_ind]
-
+                    print("Check 5 sample_iteration", sample_iteration)
                     print('Experience replay: iteration %d (surprise value: %f)' % (sample_iteration, sample_surprise_values[sorted_surprise_ind[rand_sample_ind]]))
 
                     # Load sample RGB-D heightmap
@@ -432,19 +467,20 @@ def main(args):
                     next_sample_depth_heightmap = cv2.imread(os.path.join(logger.depth_heightmaps_directory, '%06d.0.depth.png' % (sample_iteration+1)), -1)
                     next_sample_depth_heightmap = next_sample_depth_heightmap.astype(np.float32)/100000
                     actions = np.load(os.path.join(logger.action_directory, '%s.action.npy' % (sample_iteration)))
-
+                    print("Check 6 actions", actions.shape)
 
                     sample_push_success = sample_reward_value == 0.5
                     sample_grasp_success = sample_reward_value == 1
                     sample_change_detected = sample_push_success
-                    # new_sample_label_value, _ = trainer.get_label_value(sample_primitive_action, sample_push_success, sample_grasp_success, sample_change_detected, sample_push_predictions, sample_grasp_predictions, next_sample_color_heightmap, next_sample_depth_heightmap)
+                    #new_sample_label_value, _ = trainer.get_label_value(sample_primitive_action, sample_push_success, sample_grasp_success, sample_change_detected, sample_push_predictions, sample_grasp_predictions, next_sample_color_heightmap, next_sample_depth_heightmap)
 
                     # Get labels for sample and backpropagate
                     sample_best_pix_ind = (np.asarray(trainer.executed_action_log)[sample_iteration,1:4]).astype(int)
                     q_functions = (np.asarray(trainer.q_functions_log)[sample_iteration]).astype(int)
-
+                    print("Check 7 q_functions", q_functions)
 
                     sample_push_angles  = actions[0]
+                    print("check 8 sample_push_angles",sample_push_angles.shape)
                     sample_grasp_angles  = actions[1]
 
                     trainer.backprop(sample_color_heightmap, sample_depth_heightmap, sample_primitive_action, sample_best_pix_ind, trainer.label_value_log[sample_iteration],sample_push_angles,sample_grasp_angles,q_functions)
@@ -547,7 +583,7 @@ if __name__ == '__main__':
 
     # -------------- Testing options --------------
     parser.add_argument('--is_testing', dest='is_testing', action='store_true', default=False)
-    parser.add_argument('--max_test_trials', dest='max_test_trials', type=int, action='store', default=90,                help='maximum number of test runs per case/scenario')
+    parser.add_argument('--max_test_trials', dest='max_test_trials', type=int, action='store', default=30,                help='maximum number of test runs per case/scenario')
     parser.add_argument('--test_preset_cases', dest='test_preset_cases', action='store_true', default=False)
     parser.add_argument('--test_preset_file', dest='test_preset_file', action='store', default='test-10-obj-01.txt')
 

@@ -19,7 +19,7 @@ torch.set_printoptions(profile="full")
 
 class reinforcement_net(nn.Module):
 
-    def __init__(self, use_cuda):
+    def __init__(self, use_cuda): # , snapshot=None
         super(reinforcement_net, self).__init__()
         self.use_cuda = use_cuda
 
@@ -34,14 +34,14 @@ class reinforcement_net(nn.Module):
 
 
         # Critic Network (PSUH) 
-        self.push_critic1 = Critic().cuda()
-        self.push_critic2 = Critic().cuda()
+        self.push_critic1 = Critic(num_action=3).cuda()
+        self.push_critic2 = Critic(num_action=3).cuda()
 
         ###################################
 
         # Critic Network (GRASP) 
-        self.grasp_critic1 = Critic().cuda()
-        self.grasp_critic2 = Critic().cuda()
+        self.grasp_critic1 = Critic(num_action=3).cuda()
+        self.grasp_critic2 = Critic(num_action=3).cuda()
 
 
 
@@ -111,7 +111,7 @@ is_volatile=False,use_target_model=False, specific_rotation=-1):
 
                     if use_target_model:
                         # Get predicted next-state actions and Q values from target models
-                        push_angles, log_pis_next_push,_ = push_actor.evaluate(push_interm_feat.detach())
+                        push_angles, log_pis_next_push, _ = push_actor.evaluate(push_interm_feat.detach())
 
                         
 
@@ -122,43 +122,47 @@ is_volatile=False,use_target_model=False, specific_rotation=-1):
                         # grasping Target Network
 
                         # Get predicted next-state actions and Q values from target models
-                        grasp_angles, log_pis_next_grasp,_ = grasp_actor.evaluate(grasp_interm_feat.detach())
+                        grasp_angles, log_pis_next_grasp ,_  = grasp_actor.evaluate(grasp_interm_feat.detach())
 
 
                         Q_1_grasp = grasp_critic1_target(grasp_interm_feat, grasp_angles.cuda())
                         Q_2_grasp = grasp_critic2_target(grasp_interm_feat, grasp_angles.cuda())
 
 
-
+                       
 
 
                 
                     else:
                         # Psuhing
-                        push_angles = push_actor.get_angle(push_interm_feat.detach())
+                        push_angles, _ = push_actor.get_angle(push_interm_feat.detach())
 
                         Q_1_push = self.push_critic1(push_interm_feat, push_angles.cuda())
                         Q_2_push = self.push_critic2(push_interm_feat, push_angles.cuda())
 
                         # grasping
 
-                        grasp_angles= grasp_actor.get_angle(grasp_interm_feat.detach())
+                        grasp_angles, _ = grasp_actor.get_angle(grasp_interm_feat.detach())
 
 
                         Q_1_grasp = self.grasp_critic1(grasp_interm_feat, grasp_angles.cuda())
                         Q_2_grasp = self.grasp_critic2(grasp_interm_feat, grasp_angles.cuda())
 
+                    #print("push_angles befor ------------------------" + str(rotate_idx),push_angles)
+                    #print("\n" + "push_angles befor ------------------------" + str(rotate_idx),F.grid_sample(push_angles.cuda(), flow_grid_after, mode='nearest'))
+
+
                     # Forward pass through branches, undo rotation on output predictions, upsample results
                     output_prob.append([nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_1_push, flow_grid_after, mode='nearest')),
                                         nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_2_push, flow_grid_after, mode='nearest')),
-                                        nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(push_angles.cuda(), flow_grid_after, mode='nearest')),
+                                        nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(push_angles.cuda(), flow_grid_after, mode='nearest')),
                                         push_angles,
-                                        nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(log_pis_next_push.cuda(), flow_grid_after, mode='nearest')),
+                                        nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(log_pis_next_push.cuda(), flow_grid_after, mode='nearest')),
                                         nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_1_grasp, flow_grid_after, mode='nearest')),
                                         nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_2_grasp, flow_grid_after, mode='nearest')),
-                                        nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(grasp_angles.cuda(), flow_grid_after, mode='nearest')),
+                                        nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(grasp_angles.cuda(), flow_grid_after, mode='nearest')),
                                         grasp_angles,
-                                        nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(log_pis_next_grasp.cuda(), flow_grid_after, mode='nearest')),
+                                        nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(log_pis_next_grasp.cuda(), flow_grid_after, mode='nearest')),
                                         push_interm_feat,
                                         grasp_interm_feat])
 
@@ -220,16 +224,210 @@ is_volatile=False,use_target_model=False, specific_rotation=-1):
             # Forward pass through branches, undo rotation on output predictions, upsample results
             self.output_prob.append([nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_1_push, self.flow_grid_after, mode='nearest')),
                                      nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_2_push, self.flow_grid_after, mode='nearest')),
-                                     nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(push_angles, self.flow_grid_after, mode='nearest')),
+                                     nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(push_angles, self.flow_grid_after, mode='nearest')),
                                      push_angles,
-                                     nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(log_pis_next_push, self.flow_grid_after, mode='nearest')),
+                                     nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(log_pis_next_push, self.flow_grid_after, mode='nearest')),
                                      nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_1_grasp, self.flow_grid_after, mode='nearest')),
                                      nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(Q_2_grasp, self.flow_grid_after, mode='nearest')),
-                                     nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(grasp_angles, self.flow_grid_after, mode='nearest')),
+                                     nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(grasp_angles, self.flow_grid_after, mode='nearest')),
                                      grasp_angles,
-                                     nn.Upsample(scale_factor=16, mode='nearest').forward(F.grid_sample(log_pis_next_grasp, self.flow_grid_after, mode='nearest')),
+                                     nn.Upsample(scale_factor=16, mode='bilinear').forward(F.grid_sample(log_pis_next_grasp, self.flow_grid_after, mode='nearest')),
                                      push_interm_feat,
                                      grasp_interm_feat])
 
             return self.output_prob
 
+
+
+'''
+class reinforcement_net(nn.Module):
+
+    def __init__(self, use_cuda): # , snapshot=None
+        super(reinforcement_net, self).__init__()
+        self.use_cuda = use_cuda
+
+        self.feature_tunk_push = FeatureTunk()
+        self.feature_tunk_grasp = FeatureTunk()
+
+
+
+        self.num_rotations = 4
+
+        # Construct network branches for pushing and grasping
+
+
+        # Critic Network (PSUH) 
+        self.push_critic1 = Critic().cuda()
+        self.push_critic2 = Critic().cuda()
+
+        ###################################
+
+        # Critic Network (GRASP) 
+        self.grasp_critic1 = Critic().cuda()
+        self.grasp_critic2 = Critic().cuda()
+
+
+
+
+
+
+        # Initialize network weights
+        for m in self.named_modules():
+            if 'push-' in m[0] or 'grasp-' in m[0] or 'actor-' in m[0] or 'critic-' in m[0]:
+                if isinstance(m[1], nn.Conv2d):
+                    nn.init.kaiming_normal(m[1].weight.data)
+                elif isinstance(m[1], nn.BatchNorm2d):
+                    m[1].weight.data.fill_(1)
+                    m[1].bias.data.zero_()
+
+        # Initialize output variable (for backprop)
+        self.interm_feat = []
+        self.output_prob = []
+
+
+    def forward(self, input_color_data, input_depth_data,push_critic1_target,push_critic2_target,push_actor,grasp_critic1_target,grasp_critic2_target,grasp_actor,push_angles,grasp_angles,
+is_volatile=False,use_target_model=False, specific_rotation=-1):
+
+        if is_volatile:
+            with torch.no_grad():
+                self.output_prob = []
+                self.interm_feat = []
+                log_pis_next_push = torch.zeros(1,1,14,14).cuda()
+                log_pis_next_push = torch.zeros(1,1,14,14).cuda()
+
+                log_pis_next_grasp = torch.zeros(1,1,14,14).cuda()
+                log_pis_next_grasp = torch.zeros(1,1,14,14).cuda()
+
+
+                #print(input_color_data.shape)
+
+
+
+
+                # Compute intermediate features
+
+                push_interm_feat = self.feature_tunk_push(input_color_data, input_depth_data)
+
+
+                grasp_interm_feat= self.feature_tunk_grasp(input_color_data, input_depth_data)
+
+                
+                  
+
+
+
+
+
+
+                if use_target_model:
+                    # Get predicted next-state actions and Q values from target models
+                    push_angles, log_pis_next_push = push_actor.evaluate(push_interm_feat.detach())
+
+                        
+
+                    Q_1_push = push_critic1_target(push_interm_feat, push_angles.cuda())
+                    Q_2_push = push_critic2_target(push_interm_feat, push_angles.cuda())
+
+                    # take the min of both critics for updating
+                    #Q_target_next_push = torch.min(Q_1_push, Q_2_push).cpu())
+
+                
+                    # grasping Target Network
+
+                    # Get predicted next-state actions and Q values from target models
+                    grasp_angles, log_pis_next_grasp = grasp_actor.evaluate(grasp_interm_feat.detach())
+
+
+                    Q_1_grasp = grasp_critic1_target(grasp_interm_feat, grasp_angles.cuda())
+                    Q_2_grasp = grasp_critic2_target(grasp_interm_feat, grasp_angles.cuda())
+
+                    # take the min of both critics for updating
+                    #Q_target_next_grasp = torch.min(Q_target1_next_grasp, Q_target2_next_grasp).cpu())
+
+
+
+                
+                else:
+                    # Psuhing
+                    push_angles = push_actor.get_angle(push_interm_feat.detach())
+
+                    #print(push_angles.size())
+                    Q_1_push = self.push_critic1(push_interm_feat, push_angles.cuda())
+                    Q_2_push = self.push_critic2(push_interm_feat, push_angles.cuda())
+                    #print(Q_1_push.size())
+                    # grasping
+
+                    grasp_angles= grasp_actor.get_angle(grasp_interm_feat.detach())
+
+
+                    Q_1_grasp = self.grasp_critic1(grasp_interm_feat, grasp_angles.cuda())
+                    Q_2_grasp = self.grasp_critic2(grasp_interm_feat, grasp_angles.cuda())
+
+
+
+                
+
+                # Forward pass through branches, undo rotation on output predictions, upsample results
+                self.output_prob.append([nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_1_push),
+                                         nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_2_push),
+                                         push_angles,
+                                         F.interpolate(log_pis_next_push.cuda(), scale_factor=16, mode='nearest'),
+                                         nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_1_grasp),
+                                         nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_2_grasp),
+                                         grasp_angles,
+                                         F.interpolate(log_pis_next_grasp.cuda(), scale_factor=16, mode='nearest'),
+                                         push_interm_feat,
+                                         grasp_interm_feat])
+                       
+
+            return self.output_prob, self.interm_feat
+
+        else:
+            self.output_prob = []
+            self.interm_feat = []
+            log_pis_next_push = torch.zeros(1,1,14,14).cuda()
+            log_pis_next_push = torch.zeros(1,1,14,14).cuda()
+
+            log_pis_next_grasp = torch.zeros(1,1,14,14).cuda()
+            log_pis_next_grasp = torch.zeros(1,1,14,14).cuda()
+
+
+            # Compute intermediate features
+
+            push_interm_feat = self.feature_tunk_push(input_color_data, input_depth_data)
+
+
+            grasp_interm_feat= self.feature_tunk_grasp(input_color_data, input_depth_data)
+
+            
+
+  
+            # Psuhing
+
+            Q_1_push = self.push_critic1(push_interm_feat, torch.from_numpy(push_angles).cuda())
+            Q_2_push = self.push_critic2(push_interm_feat, torch.from_numpy(push_angles).cuda())
+                
+            # grasping
+
+            Q_1_grasp = self.grasp_critic1(grasp_interm_feat, torch.from_numpy(grasp_angles).cuda())
+            Q_2_grasp = self.grasp_critic2(grasp_interm_feat, torch.from_numpy(grasp_angles).cuda())
+
+           
+           
+            # Forward pass through branches, undo rotation on output predictions, upsample results
+            self.output_prob.append([nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_1_push),
+                                     nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_2_push),
+                                     push_angles,
+                                     F.interpolate(log_pis_next_push.cuda(), scale_factor=16, mode='nearest'),
+                                     nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_1_grasp),
+                                     nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_2_grasp),
+                                     grasp_angles,
+                                     F.interpolate(log_pis_next_grasp.cuda(), scale_factor=16, mode='nearest'),
+                                     push_interm_feat,
+                                     grasp_interm_feat])
+                       
+    
+
+            return self.output_prob, self.interm_feat
+
+'''

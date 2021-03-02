@@ -1,0 +1,88 @@
+Test Environment 0 
+
+Average % clearance: 53.3
+Average % grasp success per clearance: 87.6
+Average % action efficiency: 47.1
+Average grasp to push ratio: 55.8
+
+Test Environment 1 
+
+Average % clearance: 96.7
+Average % grasp success per clearance: 98.1
+Average % action efficiency: 61.3
+Average grasp to push ratio: 62.7
+
+Test Environment 2 
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 89.2
+Average % action efficiency: 88.8
+Average grasp to push ratio: 99.4
+
+Test Environment 3 
+
+Average % clearance: 70.0
+Average % grasp success per clearance: 70.4
+Average % action efficiency: 44.1
+Average grasp to push ratio: 63.9
+
+Test Environment 4
+
+Average % clearance: 80.0
+Average % grasp success per clearance: 80.5
+Average % action efficiency: 45.0
+Average grasp to push ratio: 57.4
+
+Test Environment 5
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 82.2
+Average % action efficiency: 67.5
+Average grasp to push ratio: 82.3
+
+Test Environment 6
+
+Average % clearance: 86.7
+Average % grasp success per clearance: 71.5
+Average % action efficiency: 44.9
+Average grasp to push ratio: 64.2
+
+Test Environment 7
+
+Average % clearance: 70.0
+Average % grasp success per clearance: 80.5
+Average % action efficiency: 52.1
+Average grasp to push ratio: 64.8
+
+Test Environment 8
+
+Average % clearance: 70.0
+Average % grasp success per clearance: 69.8
+Average % action efficiency: 40.7
+Average grasp to push ratio: 58.5
+
+Test Environment 9
+
+Average % clearance: 83.3
+Average % grasp success per clearance: 77.6
+Average % action efficiency: 59.1
+Average grasp to push ratio: 76.6
+
+Test Environment 10
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 62.8
+Average % action efficiency: 48.0
+Average grasp to push ratio: 77.4
+
+
+------------------------------------------------------
+
+Average:
+Model 1 - 29500
+Average % clearance: 78.5
+Average % grasp success per clearance: 73.8
+Average % action efficiency: 49.9
+
+
+

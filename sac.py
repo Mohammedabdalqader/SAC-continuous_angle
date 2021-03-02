@@ -16,8 +16,14 @@ from collections import OrderedDict
 class Actor(nn.Module):
     """Actor (Policy) Model."""
 
-    def __init__(self,log_std_min=-2, log_std_max=2):
+    def __init__(self,log_std_min=-2, log_std_max=2,num_action=1):
         """Initialize parameters and build model.
+        Params
+            state_size (int): Dimension of each state
+            action_size (int): Dimension of each action
+            seed (int): Random seed
+            fc1_units (int): Number of nodes in first hidden layer
+            fc2_units (int): Number of nodes in second hidden layer
         """
         super(Actor, self).__init__()
 
@@ -34,14 +40,17 @@ class Actor(nn.Module):
             ('actor-conv0', nn.Conv2d(1024, 128, kernel_size=3, stride=1,padding=1, bias=False)),
             ('actor-norm1', nn.BatchNorm2d(128)),
             ('actor-relu1', nn.ReLU(inplace=True)),
-            ('actor-conv1', nn.Conv2d(128, 64, kernel_size=1, stride=1,bias=False)),
+            ('actor-conv1', nn.Conv2d(128, 64, kernel_size=3, stride=1,padding=1,bias=False)),
             ('actor-norm2', nn.BatchNorm2d(64)),
-            ('actor-relu2', nn.ReLU(inplace=True))
+            ('actor-relu2', nn.ReLU(inplace=True)),
+            ('actor-conv2', nn.Conv2d(64, 32, kernel_size=1, stride=1,bias=False)),
+            ('actor-norm3', nn.BatchNorm2d(32)),
+            ('actor-relu3', nn.ReLU(inplace=True))
 
         ]))
 
-        self.mu = nn.Conv2d(64, 1, kernel_size=1, stride=1, bias=False)
-        self.log_std_linear = nn.Conv2d(64, 1, kernel_size=1, stride=1, bias=False)
+        self.mu = nn.Conv2d(32, num_action, kernel_size=1, stride=1, bias=False)
+        self.log_std_linear = nn.Conv2d(32, num_action, kernel_size=1, stride=1, bias=False)
 
     def forward(self, state):
         x = self.actornet(state)
@@ -59,7 +68,7 @@ class Actor(nn.Module):
         e = dist.sample().cuda()
         action = torch.tanh(mu + e * std)
         log_prob = Normal(mu, std).log_prob(mu + e * std) - torch.log(1 - action.pow(2) + epsilon)
-        return action, log_prob , mu
+        return action, log_prob , torch.tanh(mu)
         
     
     def get_angle(self, state):
@@ -76,34 +85,49 @@ class Actor(nn.Module):
         action = torch.tanh(mu + e * std).cpu()
 
 
-        return action
+        return action,torch.tanh(mu)
 
 
 class Critic(nn.Module):
 
-    def __init__(self):
+    def __init__(self,num_action=1):
         """Initialize parameters and build model.
+        Params
+        ======
+            state_size (int): Dimension of each state
+            action_size (int): Dimension of each action
+            seed (int): Random seed
+            fc1_units (int): Number of nodes in first hidden layer
+            fc2_units (int): Number of nodes in second hidden layer
         """
         super(Critic, self).__init__()
 
 
         self.critic = nn.Sequential(OrderedDict([
-            ('critic-norm0', nn.BatchNorm2d(1025)),
+            ('critic-norm0', nn.BatchNorm2d(1024 + num_action)),
             ('critic-relu0', nn.ReLU(inplace=True)),
-            ('critic-conv0', nn.Conv2d(1025, 128, kernel_size=1, stride=1, bias=False)),
+            ('critic-conv0', nn.Conv2d(1024 + num_action, 128, kernel_size=1, stride=1, bias=False)),
             ('critic-norm1', nn.BatchNorm2d(128)),
             ('critic-relu1', nn.ReLU(inplace=True)),
             ('critic-conv1', nn.Conv2d(128, 64 , kernel_size=1, stride=1,bias=False)),
             ('critic-norm2', nn.BatchNorm2d(64)),
             ('critic-relu2', nn.ReLU(inplace=True)),
-            ('critic-conv2', nn.Conv2d(64, 1, kernel_size=1, stride=1, bias=False))
+            ('critic-conv2', nn.Conv2d(64, 32, kernel_size=1, stride=1, bias=False)),
+            ('critic-norm3', nn.BatchNorm2d(32)),
+            ('critic-relu3', nn.ReLU(inplace=True)),
+            ('critic-conv3', nn.Conv2d(32, 1, kernel_size=1, stride=1, bias=False))
 
         ]))
 
 
+
+    
+
     def forward(self, states,actions):
         """Build a critic (value) network that maps (state, action) pairs -> Q-values."""
         x  = torch.cat((states, actions.float()), dim=1)
+
+
         x = self.critic(x)
         return x
 

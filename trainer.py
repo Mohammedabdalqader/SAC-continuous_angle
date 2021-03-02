@@ -16,19 +16,27 @@ from scipy import ndimage
 import matplotlib.pyplot as plt
 from sac import Actor,Critic
 from torch.utils.tensorboard import SummaryWriter
- 
 
 
-
-
+BUFFER_SIZE = int(5e3)   # replay buffer size
 
 gamma = 0.5               # discount factor
 TAU = 0.01                # for soft update of target parameters
+LR = 1e-3                 # learning rate 
 LR_ACTOR = 1e-4
 LR_CRITIC = 3e-4
-WEIGHT_DECAY = 2e-5       # L2 weight decay
+
+WEIGHT_DECAY = 2e-5      # L2 weight decay
+
+
 seed = 2020
+BUFFER_SIZE = int(2e3)
+BATCH_SIZE = 2          # minibatch size
+
+HIDDEN_SIZE = 256
+    
 device = "cuda"
+state_size = 20 * 20
 action_size = 1
 action_high = 1.0
 action_low = -1.0
@@ -38,11 +46,23 @@ class Trainer(object):
                  is_testing, load_snapshot, snapshot_folder, force_cpu):
         self.explore_prob = 0.5
         self.method = method
+        self.BATCH_SIZE = 5
         self.TAU = TAU
+        self.epsilon= 1.0
+        self.epsilon_min = 0.15
+        self.epsilon_decay = 0.9995 
         self.is_testing = is_testing
+        self.num_success_grasp = 0
+        self.num_success_push = 0
+        self.grasp_loss = 0
+        self.total_grasp_loss = 0
         self.push_update = 0
         self.grasp_update = 0
-
+        ## d4pg parameters
+        self.v_min = -5
+        self.v_max = 5
+        self.num_atoms = 51
+        self.delta_z = (self.v_max - self.v_min) / (self.num_atoms - 1)
 
         ## SAC parameters
         self.target_entropy = -action_size  # -dim(A)
@@ -51,8 +71,10 @@ class Trainer(object):
         '''
         self.push_log_alpha = torch.tensor([0.0], requires_grad=True)
         self.push_alpha_optimizer = optim.SGD(params=[self.push_log_alpha], lr=LR_ACTOR) 
+
         self.grasp_log_alpha = torch.tensor([0.0], requires_grad=True)
         self.grasp_alpha_optimizer = optim.SGD(params=[self.grasp_log_alpha], lr=LR_ACTOR) 
+
         self._action_prior = "uniform"
         '''
 
@@ -72,8 +94,11 @@ class Trainer(object):
 
         # Fully convolutional Q network for deep reinforcement learning
         if self.method == 'reinforcement': 
-            self.action_size = action_size  
+            self.action_size = 1   # angle
 
+            # Prioritized experience replay       
+            #self.push_memory = PrioritizedReplay(capacity=BUFFER_SIZE)
+            #self.grasp_memory = PrioritizedReplay(capacity=BUFFER_SIZE)
 
 
             self.model = reinforcement_net(self.use_cuda)
@@ -82,7 +107,7 @@ class Trainer(object):
 
 
             # Actor Network (PUSH)
-            self.push_actor = Actor().cuda()
+            self.push_actor = Actor(num_action=3).cuda()
 
 
             # push actor optimizer
@@ -90,29 +115,29 @@ class Trainer(object):
 
 
             # push critic ntworks
-            self.push_critic1_target = Critic().cuda()
+            self.push_critic1_target = Critic(num_action=3).cuda()
             self.push_critic1_target.load_state_dict(self.model.push_critic1.state_dict())
 
             
-            self.push_critic2_target = Critic().cuda()
+            self.push_critic2_target = Critic(num_action=3).cuda()
             self.push_critic2_target.load_state_dict(self.model.push_critic2.state_dict())
 
 
             #######################################################################################################################
 
             # Actor Network (GRASP)
-            self.grasp_actor = Actor().cuda()
+            self.grasp_actor = Actor(num_action=3).cuda()
  
             
             # grasp actor optimizer
             self.grasp_actor_optimizer = optim.SGD(self.grasp_actor.parameters(), lr=LR_ACTOR,momentum=0.9,weight_decay=0.0)
 
             # grasp critic ntworks
-            self.grasp_critic1_target = Critic().to(device)
+            self.grasp_critic1_target = Critic(num_action=3).to(device)
             self.grasp_critic1_target.load_state_dict(self.model.grasp_critic1.state_dict())
 
 
-            self.grasp_critic2_target = Critic().to(device)
+            self.grasp_critic2_target = Critic(num_action=3).to(device)
             self.grasp_critic2_target.load_state_dict(self.model.grasp_critic2.state_dict())
 
             
@@ -128,22 +153,31 @@ class Trainer(object):
       
         if load_snapshot:
       
+            '''
+            pretrained_dict = torch.load(os.path.join(snapshot_folder,"snapshot-018500.reinforcement.pth"))
+            model_dict = self.model.state_dict()
 
+            pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
 
-            self.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.reinforcement.pth")))
+            model_dict.update(pretrained_dict) 
+            self.model.load_state_dict(model_dict)
+            '''
+
+            self.model.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.reinforcement.pth")))
 
             
+
             
             # load actor-critic models (PUSH)
-            self.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_actor.pth")))
-            self.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic1_target.pth")))
-            self.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.push_critic2_target.pth")))
+            self.push_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.push_actor.pth")))
+            self.push_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.push_critic1_target.pth")))
+            self.push_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.push_critic2_target.pth")))
 
             
             # load actor-critic models (GRASP)
-            self.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_actor.pth")))
-            self.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic1_target.pth")))
-            self.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-10-obj.grasp_critic2_target.pth")))
+            self.grasp_actor.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.grasp_actor.pth")))
+            self.grasp_critic1_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.grasp_critic1_target.pth")))
+            self.grasp_critic2_target.load_state_dict(torch.load(os.path.join(snapshot_folder,"snapshot-015750.grasp_critic2_target.pth")))
             
             
          
@@ -158,11 +192,11 @@ class Trainer(object):
         self.model.train()
 
         # Initialize optimizer
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=LR_CRITIC,momentum=0.9,weight_decay=WEIGHT_DECAY)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=3e-4,momentum=0.9,weight_decay=2e-5)
         self.iteration = 0
-        self.accumulated_rewards = deque(maxlen=100)
-        self.writer = SummaryWriter('runs/SAC')
 
+        self.accumulated_rewards = deque(maxlen=100)
+        self.writer = SummaryWriter('runs/SAC-3-1')
 
  
         # Initialize lists to save execution info and RL variables
@@ -180,7 +214,67 @@ class Trainer(object):
         self.push_alpha_log = []
         self.q_functions_log = []
 
+    def padding(self,state):
 
+
+
+        diag_length = float(state.shape[-1]) * np.sqrt(2)
+        diag_length = np.ceil(diag_length/4)*4
+        padding_width = int((diag_length - state.shape[-1])/2)
+        state =  np.pad(state[0][0][:][:], padding_width, 'constant', constant_values=0)
+        state = torch.from_numpy(state).unsqueeze(0).unsqueeze(0)
+        return state
+
+
+    def data_augmentation(self,state,rotation):
+
+
+        rotate_theta = np.radians(rotation)
+
+        # Compute sample grid for rotation BEFORE neural network
+        affine_mat = np.asarray([[np.cos(-rotate_theta), np.sin(-rotate_theta), 0],[-np.sin(-rotate_theta), np.cos(-rotate_theta), 0]])
+        affine_mat.shape = (2,3,1)
+        affine_mat = torch.from_numpy(affine_mat).permute(2,0,1).float()
+        flow_grid = F.affine_grid(affine_mat, state.size())
+
+
+        # Rotate images clockwise
+
+        state = F.grid_sample(state, flow_grid, mode='nearest')
+
+
+        return state.squeeze(0)
+    
+
+    def ROI(self,radius, rowNumber, columnNumber,a):
+
+        r_start = rowNumber-radius
+        c_start = columnNumber-radius
+
+        r_end = rowNumber+radius+1
+        c_end = columnNumber+radius+1
+
+
+
+        if r_start < 0:
+            r_end   = r_end - r_start 
+            r_start = 0
+        if c_start < 0:
+            c_end   = c_end - c_start 
+            c_start = 0
+
+        if r_end > len(a[1]) : 
+            r_start = r_start - (r_end - len(a[1]))
+            r_end   = len(a[1])
+        if c_end > len(a[1]):
+
+            c_start = c_start - (c_end - len(a[1]))
+            c_end   = len(a[1])
+
+
+
+            
+        return [[a[i][j][:] for j in range(c_start, c_end)] for i in range(r_start, r_end)]
 
 
 
@@ -202,18 +296,32 @@ class Trainer(object):
         self.iteration = self.executed_action_log.shape[0] - 2
         self.executed_action_log = self.executed_action_log[0:self.iteration,:]
         self.executed_action_log = self.executed_action_log.tolist()
+
+
+
         self.label_value_log = np.loadtxt(os.path.join(transitions_directory, 'label-value.log.txt'), delimiter=' ')
         self.label_value_log = self.label_value_log[0:self.iteration]
         self.label_value_log.shape = (self.iteration,1)
         self.label_value_log = self.label_value_log.tolist()
+
         self.predicted_value_log = np.loadtxt(os.path.join(transitions_directory, 'predicted-value.log.txt'), delimiter=' ')
         self.predicted_value_log = self.predicted_value_log[0:self.iteration]
         self.predicted_value_log.shape = (self.iteration,1)
         self.predicted_value_log = self.predicted_value_log.tolist()
+
         self.reward_value_log = np.loadtxt(os.path.join(transitions_directory, 'reward-value.log.txt'), delimiter=' ')
         self.reward_value_log = self.reward_value_log[0:self.iteration]
         self.reward_value_log.shape = (self.iteration,1)
         self.reward_value_log = self.reward_value_log.tolist()
+
+
+
+
+        self.q_functions_log = np.loadtxt(os.path.join(transitions_directory, 'critic_type.log.txt'), delimiter=' ')
+        self.q_functions_log = self.q_functions_log[0:self.iteration]
+        self.q_functions_log.shape = (self.iteration,1)
+        self.q_functions_log = self.q_functions_log.tolist()
+
         self.use_heuristic_log = np.loadtxt(os.path.join(transitions_directory, 'use-heuristic.log.txt'), delimiter=' ')
         self.use_heuristic_log = self.use_heuristic_log[0:self.iteration]
         self.use_heuristic_log.shape = (self.iteration,1)
@@ -287,14 +395,14 @@ class Trainer(object):
                 if rotate_idx == 0:
                     push_predictions_Q1 = output_prob[rotate_idx][0].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
                     push_predictions_Q2 = output_prob[rotate_idx][1].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
-                    push_angles_full = output_prob[rotate_idx][2].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
-                    log_pis_next_push = output_prob[rotate_idx][4].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
+                    push_angles_full = output_prob[rotate_idx][2].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
+                    log_pis_next_push = output_prob[rotate_idx][4].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
 
 
                     grasp_predictions_Q1 = output_prob[rotate_idx][5].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
                     grasp_predictions_Q2 = output_prob[rotate_idx][6].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
-                    grasp_angles_full = output_prob[rotate_idx][7].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
-                    log_pis_next_grasp = output_prob[rotate_idx][9].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
+                    grasp_angles_full = output_prob[rotate_idx][7].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
+                    log_pis_next_grasp = output_prob[rotate_idx][9].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]
 
 
                     if is_volatile:
@@ -308,13 +416,13 @@ class Trainer(object):
                 else:
                     push_predictions_Q1 = np.concatenate((push_predictions_Q1, output_prob[rotate_idx][0].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
                     push_predictions_Q2 = np.concatenate((push_predictions_Q2, output_prob[rotate_idx][1].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
-                    push_angles_full = np.concatenate((push_angles_full, output_prob[rotate_idx][2].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
-                    log_pis_next_push = np.concatenate((log_pis_next_push, output_prob[rotate_idx][4].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
+                    push_angles_full = np.concatenate((push_angles_full, output_prob[rotate_idx][2].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
+                    log_pis_next_push = np.concatenate((log_pis_next_push, output_prob[rotate_idx][4].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
 
                     grasp_predictions_Q1 = np.concatenate((grasp_predictions_Q1, output_prob[rotate_idx][5].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
                     grasp_predictions_Q2 = np.concatenate((grasp_predictions_Q2, output_prob[rotate_idx][6].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
-                    grasp_angles_full = np.concatenate((grasp_angles_full, output_prob[rotate_idx][7].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
-                    log_pis_next_grasp = np.concatenate((log_pis_next_grasp, output_prob[rotate_idx][9].cpu().detach().numpy()[:,0,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
+                    grasp_angles_full = np.concatenate((grasp_angles_full, output_prob[rotate_idx][7].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
+                    log_pis_next_grasp = np.concatenate((log_pis_next_grasp, output_prob[rotate_idx][9].cpu().detach().numpy()[:,:,int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2),int(padding_width/2):int(color_heightmap_2x.shape[0]/2 - padding_width/2)]), axis=0)
 
 
                     if is_volatile:
@@ -324,11 +432,15 @@ class Trainer(object):
                         push_angles = np.concatenate((push_angles, output_prob[rotate_idx][3]), axis=0)
                         grasp_angles = np.concatenate((grasp_angles, output_prob[rotate_idx][8]), axis=0)
 
+
+
+
+
+        print("Check 1 push_predictions_Q1 ", push_predictions_Q1.shape)
+        print("Check 2 push_angles" , push_angles.shape)
               
 
         return push_predictions_Q1, push_predictions_Q2 , push_angles_full,push_angles, log_pis_next_push, grasp_predictions_Q1,grasp_predictions_Q2, grasp_angles_full, grasp_angles,log_pis_next_grasp
-
-
 
 
     def get_label_value(self, primitive_action, push_success, grasp_success, change_detected, next_color_heightmap, next_depth_heightmap):
@@ -358,14 +470,14 @@ class Trainer(object):
 
         
 
+                print("final_check",(np.sum(log_pis_next_push,axis=1)/2).shape)
 
-
-                Q1_target_push = torch.from_numpy(next_push_predictions_Q1)- self.alpha * torch.from_numpy(log_pis_next_push)
-                Q2_target_push = torch.from_numpy(next_push_predictions_Q2) - self.alpha * torch.from_numpy(log_pis_next_push)
+                Q1_target_push = torch.from_numpy(next_push_predictions_Q1)- self.alpha * torch.from_numpy(np.sum(log_pis_next_push,axis=1)/2)
+                Q2_target_push = torch.from_numpy(next_push_predictions_Q2) - self.alpha * torch.from_numpy(np.sum(log_pis_next_push,axis=1)/2)
                 future_reward_push = torch.min(torch.max(Q1_target_push),torch.max(Q2_target_push))
 
-                Q1_target_grasp = torch.from_numpy(next_grasp_predictions_Q1) - self.alpha * torch.from_numpy(log_pis_next_grasp)
-                Q2_target_grasp = torch.from_numpy(next_grasp_predictions_Q2) - self.alpha * torch.from_numpy(log_pis_next_grasp)
+                Q1_target_grasp = torch.from_numpy(next_grasp_predictions_Q1) - self.alpha * torch.from_numpy(np.sum(log_pis_next_grasp,axis=1)/2)
+                Q2_target_grasp = torch.from_numpy(next_grasp_predictions_Q2) - self.alpha * torch.from_numpy(np.sum(log_pis_next_grasp,axis=1)/2)
                 future_reward_grasp = torch.min(torch.max(Q1_target_grasp),torch.max(Q2_target_grasp))
 
 
@@ -391,7 +503,7 @@ class Trainer(object):
     # Compute labels and backpropagate
     def backprop(self, color_heightmap, depth_heightmap, primitive_action, best_pix_ind, label_value,push_angles,grasp_angles,critic_type):
 
-
+        print("Check 4 best_pix_ind", best_pix_ind)
         if self.method == 'reinforcement':
 
             # Compute labels
@@ -457,12 +569,12 @@ class Trainer(object):
                 if np.max(push_predictions_Q1) > np.max(push_predictions_Q2):
                     Q_push = self.model.push_critic1(self.model.output_prob[0][10].cuda(), angles_pred.cuda())
                     #Q_push = nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_push)
-                    actor_loss = (self.alpha * log_pis - Q_push) 
+                    actor_loss = (self.alpha * torch.sum(log_pis,dim=1)/2 - Q_push) 
                 elif np.max(push_predictions_Q1) < np.max(push_predictions_Q2):
                     Q_push = self.model.push_critic2(self.model.output_prob[0][10].cuda(), angles_pred.cuda())
                     #Q_push = nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_push)
 
-                    actor_loss = (self.alpha * log_pis - Q_push) 
+                    actor_loss = (self.alpha * torch.sum(log_pis,dim=1)/2 - Q_push) 
 
                     
                 push_actor_loss = actor_loss.mean()
@@ -522,12 +634,12 @@ class Trainer(object):
                 if np.max(grasp_predictions_Q1) > np.max(grasp_predictions_Q2):
                     Q_grasp = self.model.grasp_critic1(self.model.output_prob[0][11].cuda(), angles_pred.cuda())
                     #Q_push = nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_push)
-                    actor_loss = (self.alpha * log_pis - Q_grasp) 
+                    actor_loss = (self.alpha * torch.sum(log_pis,dim=1)/2 - Q_grasp) 
                 elif np.max(grasp_predictions_Q1) < np.max(grasp_predictions_Q2):
                     Q_grasp = self.model.grasp_critic2(self.model.output_prob[0][11].cuda(), angles_pred.cuda())
                     #Q_push = nn.Upsample(scale_factor=16, mode='bilinear').forward(Q_push)
 
-                    actor_loss = (self.alpha * log_pis - Q_grasp) 
+                    actor_loss = (self.alpha * torch.sum(log_pis,dim=1)/2 - Q_grasp) 
 
                     
                 grasp_actor_loss = actor_loss.mean()
@@ -552,3 +664,9 @@ class Trainer(object):
             print('actor_loss_value: ', (torch.from_numpy(actor_loss_value[0])))
             self.writer.add_scalar("critic-loss/train", loss_value, self.iteration)
             self.writer.add_scalar("actor-loss/train", torch.from_numpy(actor_loss_value[0]), self.iteration)
+
+
+
+
+
+

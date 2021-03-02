@@ -1,0 +1,90 @@
+Test Environment 0 (Done)
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 88.9
+Average % action efficiency: 52.6
+Average grasp to push ratio: 59.8
+
+Test Environment 1 (Done)
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 87.0
+Average % action efficiency: 52.7
+Average grasp to push ratio: 61.2
+
+Test Environment 2 (Done)
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 94.5
+Average % action efficiency: 94.5
+Average grasp to push ratio: 100.0
+
+Test Environment 3 (Done)
+
+Average % clearance: 86.7
+Average % grasp success per clearance: 78.0
+Average % action efficiency: 45.9
+Average grasp to push ratio: 59.0
+
+Test Environment 4 (Done)
+
+Average % clearance: 90.0
+Average % grasp success per clearance: 84.2
+Average % action efficiency: 55.5
+Average grasp to push ratio: 66.8
+
+Test Environment 5 (Done)
+
+Average % clearance: 96.7
+Average % grasp success per clearance: 77.2
+Average % action efficiency: 59.5
+Average grasp to push ratio: 77.5
+
+
+
+Test Environment 6 (Done)
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 82.3
+Average % action efficiency: 57.9
+Average grasp to push ratio: 71.6
+
+Test Environment 7 (Done)
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 92.5
+Average % action efficiency: 70.7
+Average grasp to push ratio: 76.5
+
+Test Environment 8 (Done)
+
+Average % clearance: 56.7
+Average % grasp success per clearance: 67.6
+Average % action efficiency: 47.9
+Average grasp to push ratio: 71.2
+
+Test Environment 9 (Done)
+
+Average % clearance: 100.0
+Average % grasp success per clearance: 89.6
+Average % action efficiency: 77.0
+Average grasp to push ratio: 85.1
+
+Test Environment 10 (Done)
+
+Average % clearance: 56.7
+Average % grasp success per clearance: 60.5
+Average % action efficiency: 39.8
+Average grasp to push ratio: 68.3
+
+
+------------------------------------------------------
+
+Average:
+Model 2 - 16500
+Average % clearance: 89.7
+Average % grasp success per clearance: 82
+Average % action efficiency: 59.5
+
+
+
